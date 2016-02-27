@@ -211,7 +211,8 @@ BEGIN
 
   sel_autoconfig  <= '1' WHEN fastramcfg(2 downto 0)/="000" AND cpuaddr(23 downto 19)="11101" AND autoconfig_out/="00" ELSE '0'; --$E80000 - $EFFFFF
   sel_z3ram       <= '1' WHEN (cpuaddr(31 downto 24)=z3ram_base) AND z3ram_ena='1' ELSE '0';
-  sel_z2ram       <= '1' WHEN (cpuaddr(31 downto 24) = "00000000") AND ((cpuaddr(23 downto 21) = "001") OR (cpuaddr(23 downto 21) = "010") OR (cpuaddr(23 downto 21) = "011") OR (cpuaddr(23 downto 21) = "100")) AND z2ram_ena='1' ELSE '0';
+  sel_z2ram       <= '1' WHEN (cpuaddr(31 downto 24) = "00000000") AND ((cpuaddr(23 downto 21) = "001") OR (cpuaddr(23 downto 21) = "010")) AND z2ram_ena='1' ELSE '0';
+  --sel_z2ram       <= '1' WHEN (cpuaddr(31 downto 24) = "00000000") AND ((cpuaddr(23 downto 21) = "001") OR (cpuaddr(23 downto 21) = "010") OR (cpuaddr(23 downto 21) = "011") OR (cpuaddr(23 downto 21) = "100")) AND z2ram_ena='1' ELSE '0';
   --sel_eth         <= '1' WHEN (cpuaddr(31 downto 24) = eth_base) AND eth_cfgd='1' ELSE '0';
   sel_chipram     <= '1' WHEN (cpuaddr(31 downto 24) = "00000000") AND (cpuaddr(23 downto 21)="000") AND turbochip_ena='1' AND turbochip_d='1' ELSE '0'; --$000000 - $1FFFFF
   --sel_chipram     <= '1' WHEN sel_z3ram/='1' AND turbochip_ena='1' AND turbochip_d='1' AND (cpuaddr(23 downto 21)="000") ELSE '0'; --$000000 - $1FFFFF
@@ -359,7 +360,8 @@ PROCESS (clk) BEGIN
         CASE fastramcfg(1 downto 0) IS
           WHEN "01" => autoconfig_data <= "0110";    -- 2MB
           WHEN "10" => autoconfig_data <= "0111";    -- 4MB
-          WHEN OTHERS => autoconfig_data <= "0000";  -- 8MB
+          WHEN OTHERS => autoconfig_data <= "0111";  -- 8MB
+--          WHEN OTHERS => autoconfig_data <= "0000";  -- 8MB
         END CASE;
       WHEN "001000" => autoconfig_data <= "1110";    -- Manufacturer ID: 0x139c
       WHEN "001001" => autoconfig_data <= "1100";

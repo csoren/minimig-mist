@@ -32,6 +32,9 @@
 // 2009-11-18	- changed sector buffer size
 // 2010-04-13	- changed sector buffer size
 // 2010-08-10	- improved BSY signal handling
+//
+// -- CES --
+// 2014-11-23   - Added wires for PC Card
 
 module gayle
 (
@@ -46,6 +49,7 @@ module gayle
 	input	lwr,
 	input	sel_ide,			// $DAxxxx
 	input	sel_gayle,			// $DExxxx
+	input	sel_pccard,			// $A00000-$A7FFFF
 	output	irq,
 	output	nrdy,				// fifo is not ready for reading 
 	input	[1:0] hdd_ena,		// enables Master & Slave drives
@@ -59,8 +63,19 @@ module gayle
 	input	hdd_status_wr,
 	input	hdd_data_wr,
 	input	hdd_data_rd,
-  output hd_fwr,
-  output hd_frd
+	output	hd_fwr,
+	output	hd_frd,
+	
+	output	cc_a0,
+	output	cc_reg,
+	output	cc_iord,
+	output	cc_iowr,
+	output	cc_oe,
+	output	cc_we,
+	output	cc_ce1,
+	output	cc_ce2,
+	input	cc_ireq,
+	input	cc_cd
 );
 
 localparam VCC = 1'b1;
@@ -114,6 +129,7 @@ wire  sel_cs;         // Gayle IDE CS
 wire 	sel_intreq;		// Gayle interrupt request status register select
 wire 	sel_intena;		// Gayle interrupt enable register select
 wire  sel_cfg;      // Gayle CFG
+wire 	sel_cardstat;	// Gayle card status register select ($DA8000)
 
 // internal registers
 reg		intena;			// Gayle IDE interrupt enable bit
@@ -144,7 +160,7 @@ wire 	fifo_empty;
 wire	fifo_last;			// last word of a sector is being read
 
 // gayle id reg
-reg		[1:0] gayleid_cnt;	// sequence counter
+reg		[2:0] gayleid_cnt;	// sequence counter
 wire	gayleid;			// output data (one bit wide)
 
 // hd leds
@@ -255,17 +271,17 @@ always @(posedge clk)
   		intena <= data_in[15];
   end
 			
-// gayle id register: reads 1->1->0->1 on MSB
+// gayle id register: reads 1->1->0->1->0->0->0->0 on MSB
 always @(posedge clk)
   if (clk7_en) begin
   	if (sel_gayleid)
   		if (hwr) // a write resets sequence counter
-  			gayleid_cnt <= 2'd0;
+  			gayleid_cnt <= 3'd0;
   		else if (rd)
-  			gayleid_cnt <= gayleid_cnt + 2'd1;
+  			gayleid_cnt <= gayleid_cnt + 3'd1;
   end
 
-assign gayleid = ~gayleid_cnt[1] | gayleid_cnt[0]; // Gayle ID output data
+assign gayleid = ~gayleid_cnt[2] & (~gayleid_cnt[1] | gayleid_cnt[0]); // Gayle ID output data
 
 // status register (write only from SPI host)
 // 7 - busy status (write zero to finish command processing: allow host access to task file registers)
@@ -363,12 +379,33 @@ gayle_fifo SECBUF1
 // fifo is not ready for reading
 assign nrdy = pio_in & sel_fifo & fifo_empty;
 
+// PC Card
+
+wire cc_sel_attr = sel_pccard && address_in[18:17] == 2'b00;
+wire cc_sel_io = sel_pccard && address_in[18:17] == 2'b01;
+
+wire cc_byte_access = address_in[16];
+
+assign cc_reg = cc_sel_attr || cc_sel_io;
+
+assign cc_oe = cc_sel_attr && rd;
+assign cc_we = cc_sel_attr && (hwr || lwr);
+
+assign cc_iord = cc_sel_io && rd;
+assign cc_iowr = cc_sel_io && (hwr || lwr);
+
+assign cc_a0 = sel_pccard && cc_byte_access;
+
+assign cc_ce1 = sel_pccard;
+assign cc_ce2 = sel_pccard && !cc_byte_access;
+
+
 //data_out multiplexer
 assign data_out = (sel_fifo && rd ? fifo_data_out : sel_status ? (!dev && hdd_ena[0]) || (dev && hdd_ena[1]) ? {status,8'h00} : 16'h00_00 : sel_tfr && rd ? {tfr_out,8'h00} : 16'h00_00)
-         | (sel_cs      && rd  ? {(cs_mask[5] || intreq), cs_mask[4:0], cs, 8'h0} : 16'h00_00)				
+			   | (sel_cs      && rd  ? {1'b0,cc_cd,(cs_mask[5] || intreq), cs_mask[4:0], cs, 8'h0} : 16'h00_00)				
 			   | (sel_intreq  && rd  ? {intreq, 15'b000_0000_0000_0000}                 : 16'h00_00)				
 			   | (sel_intena  && rd  ? {intena, 15'b000_0000_0000_0000}                 : 16'h00_00)				
-			   | (sel_gayleid && rd  ? {gayleid,15'b000_0000_0000_0000}                 : 16'h00_00)
+			   | (sel_gayleid && rd  ? {gayleid,15'b000_0000_0000_0000} : 16'h00_00)
  			   | (sel_cfg     && rd  ? {cfg,    12'b0000_0000_0000}                     : 16'h00_00);
 
 
